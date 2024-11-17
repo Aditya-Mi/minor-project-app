@@ -1,9 +1,8 @@
-// server_control.dart
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+import 'package:minor_project/services/api_service.dart';
+import '../services/shared_prefs_service.dart';
 import '../utils/logger.dart';
 
 class ServerControlScreen extends StatefulWidget {
@@ -16,39 +15,67 @@ class ServerControlScreen extends StatefulWidget {
 class _ServerControlScreenState extends State<ServerControlScreen> {
   bool _isServerRunning = false;
   bool _isLoading = false;
+  String? _fcmToken;
   String? _statusMessage;
   Timer? _statusCheckTimer;
-  final String _baseUrl = 'http://192.168.2.159:5000'; // Flask server URL
+  ApiService apiService = ApiService(); // Flask server URL
 
   @override
   void initState() {
     super.initState();
     _checkServerStatus();
     _startStatusCheck();
+    _loadToken();
+  }
+
+  Future<void> _simulateFireAlert() async {
+    setState(() {
+      _isLoading = true;
+    });
+
+    try {
+      final success = await apiService.requestFireAlert(_fcmToken);
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            success
+                ? 'Fire alert sent successfully!'
+                : 'Failed to send fire alert',
+          ),
+          backgroundColor: success ? Colors.green : Colors.red,
+        ),
+      );
+    } finally {
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  Future<void> _loadToken() async {
+    final token = await SharedPrefsService.getToken();
+    setState(() {
+      _fcmToken = token;
+    });
   }
 
   void _startStatusCheck() {
     _statusCheckTimer = Timer.periodic(
       const Duration(seconds: 5),
-          (_) => _checkServerStatus(),
+      (_) => _checkServerStatus(),
     );
   }
 
   Future<void> _checkServerStatus() async {
     try {
-      final response = await http.get(Uri.parse('$_baseUrl/health'));
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _isServerRunning = data['streaming_status']['is_active'] ?? false;
-          _statusMessage = _isServerRunning
-              ? 'Server streaming is active\n${_formatMetrics(data)}'
-              : 'Server streaming is stopped';
-        });
-      } else {
-        throw Exception('Failed to get server status');
-      }
+      final data = await apiService.checkServerStatus();
+      setState(() {
+        _isServerRunning = data['streaming_status']['is_active'] ?? false;
+        _statusMessage = _isServerRunning
+            ? 'Server streaming is active\n${_formatMetrics(data)}'
+            : 'Server streaming is stopped';
+      });
     } catch (e) {
       setState(() {
         _isServerRunning = false;
@@ -73,22 +100,15 @@ Queue Size: ${metrics['queue_size'] ?? 'N/A'}
   Future<void> _startStream() async {
     setState(() {
       _isLoading = true;
-      _statusMessage = _isServerRunning ? 'Stopping stream...' : 'Starting stream...';
+      _statusMessage =
+          _isServerRunning ? 'Stopping stream...' : 'Starting stream...';
     });
     try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/stream/start'),
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _statusMessage = data['message'];
-        });
-        _checkServerStatus(); // Update status immediately
-      } else {
-        throw Exception('Failed to start server');
-      }
+      final data = await apiService.startStream();
+      setState(() {
+        _statusMessage = data['message'];
+      });
+      _checkServerStatus(); // Update status immediately
     } catch (e, stackTrace) {
       Logger.error('Server control error', e, stackTrace);
       setState(() {
@@ -104,22 +124,15 @@ Queue Size: ${metrics['queue_size'] ?? 'N/A'}
   Future<void> _stopStream() async {
     setState(() {
       _isLoading = true;
-      _statusMessage = _isServerRunning ? 'Stopping stream...' : 'Starting stream...';
+      _statusMessage =
+          _isServerRunning ? 'Stopping stream...' : 'Starting stream...';
     });
     try {
-      final response = await http.post(
-        Uri.parse('$_baseUrl/stream/stop'),
-      );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _statusMessage = data['message'];
-        });
-        _checkServerStatus(); // Update status immediately
-      } else {
-        throw Exception('Failed to stop server');
-      }
+      final data = await apiService.stopStream();
+      setState(() {
+        _statusMessage = data['message'];
+      });
+      _checkServerStatus(); // Update status immediately
     } catch (e, stackTrace) {
       Logger.error('Server control error', e, stackTrace);
       setState(() {
@@ -131,7 +144,6 @@ Queue Size: ${metrics['queue_size'] ?? 'N/A'}
       });
     }
   }
-
 
   @override
   Widget build(BuildContext context) {
@@ -147,7 +159,9 @@ Queue Size: ${metrics['queue_size'] ?? 'N/A'}
               padding: const EdgeInsets.all(16),
               margin: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: _isServerRunning ? Colors.green.shade100 : Colors.red.shade100,
+                color: _isServerRunning
+                    ? Colors.green.shade100
+                    : Colors.red.shade100,
                 borderRadius: BorderRadius.circular(8),
                 border: Border.all(
                   color: _isServerRunning ? Colors.green : Colors.red,
@@ -186,9 +200,28 @@ Queue Size: ${metrics['queue_size'] ?? 'N/A'}
                 ),
                 style: ElevatedButton.styleFrom(
                   backgroundColor: _isServerRunning ? Colors.red : Colors.green,
-                  padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
                 ),
               ),
+            ElevatedButton.icon(
+              onPressed: _simulateFireAlert,
+              label: const Text(
+                'Fire',
+                style: TextStyle(
+                  color: Colors.white,
+                ),
+              ),
+              icon: const Icon(
+                Icons.fire_extinguisher,
+                color: Colors.white,
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+              ),
+            ),
           ],
         ),
       ),
