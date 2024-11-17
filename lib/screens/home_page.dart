@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:minor_project/server_control.dart';
-import 'package:minor_project/video_stream.dart';
+import 'package:minor_project/screens/server_control.dart';
+import 'package:minor_project/screens/video_stream.dart';
 
 class HomePage extends StatelessWidget {
   const HomePage({super.key});

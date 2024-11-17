@@ -1,8 +1,7 @@
 import 'dart:async';
-import 'dart:convert';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:http/http.dart' as http;
-import 'logger.dart';
+import '../utils/logger.dart';
 
 class ConnectionManager {
   final String host;
